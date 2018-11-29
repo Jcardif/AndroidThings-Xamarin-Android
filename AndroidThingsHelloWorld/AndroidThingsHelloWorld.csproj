@@ -59,6 +59,8 @@
     <Compile Include="Activities\MainActivity.cs" />
     <Compile Include="Helpers\BoardDefaults.cs" />
     <Compile Include="Helpers\DynamicSensorCallback.cs" />
+    <Compile Include="Helpers\Handlers.cs" />
+    <Compile Include="Helpers\IHandler.cs" />
     <Compile Include="Helpers\ISensorCallback.cs" />
     <Compile Include="Resources\Resource.Designer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
