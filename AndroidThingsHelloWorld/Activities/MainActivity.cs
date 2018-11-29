@@ -12,6 +12,9 @@ using Google.Android.Things.Contrib.Driver.Bmx280;
 using Google.Android.Things.Contrib.Driver.Button;
 using Google.Android.Things.Contrib.Driver.Ht16k33;
 using Google.Android.Things.Contrib.Driver.Pwmspeaker;
+using Java.Lang;
+using Button = Google.Android.Things.Contrib.Driver.Button.Button;
+using Exception = System.Exception;
 using Toolbar = Android.Support.V7.Widget.Toolbar;
 
 namespace AndroidThingsHelloWorld.Activities
@@ -58,14 +61,53 @@ namespace AndroidThingsHelloWorld.Activities
             // GPIO button that generates 'A' keypresses (handled by onKeyUp method)
             try
             {
-
+                buttonInputDriver = new ButtonInputDriver(BoardDefaults.GetButtonGPIOPin(),
+                    Button.LogicState.PressedWhenLow,Convert.ToInt32(Keycode.A));
+                buttonInputDriver.Register();
+                Toast.MakeText(this, "Initialized GPIO Button that generates a keypress with KEYCODE_A", ToastLength.Long).Show();
             }
             catch (Exception e)
             {
                 Console.WriteLine(e);
-                throw;
+                throw new RuntimeException("Error initializing GPIO button");
+            }
+            // I2C
+            // Note: In this sample we only use one I2C bus, but multiple peripherals can be connected
+            // to it and we can access them all, as long as they each have a different address on the
+            // bus. Many peripherals can be configured to use a different address, often by connecting
+            // the pins a certain way; this may be necessary if the default address conflicts with
+            // another peripheral's. In our case, the temperature sensor and the display have
+            // different default addresses, so everything just works.
+
+            try
+            {
+                var callback=new DynamicSensorCallback(this);
+                environmentalSensorDriver=new Bmx280SensorDriver(BoardDefaults.GetI2CBus());
+                sensorManager.RegisterDynamicSensorCallback(callback);
+                environmentalSensorDriver.RegisterTemperatureSensor();
+                environmentalSensorDriver.RegisterPressureSensor();
+                Toast.MakeText(this, "Initialized I2C BMP280", ToastLength.Long).Show();
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+                throw new RuntimeException("Error initializing BMP280");
             }
 
+            try
+            {
+                display=new AlphanumericDisplay(BoardDefaults.GetI2CBus());
+                display.SetEnabled(true);
+                display.Clear();
+                Toast.MakeText(this, "Initialized I2C Display", ToastLength.Long).Show();
+
+            }
+            catch (Exception e)
+            {
+                Toast.MakeText(this, "Error initializing displayy", ToastLength.Long).Show();
+                Toast.MakeText(this, "Display disabled", ToastLength.Long).Show();
+                display = null;
+            }
             var toolbar = FindViewById<Toolbar>(Resource.Id.home_toolbar);
             SetSupportActionBar(toolbar);
             SupportActionBar.Title = "Hello World";
@@ -111,7 +153,7 @@ namespace AndroidThingsHelloWorld.Activities
 
         public void OnDynamicSensorDisconnected(Sensor sensor)
         {
-            throw new NotImplementedException();
+
         }
 
         public void OnAccuracyChanged(Sensor sensor, SensorStatus accuracy)
@@ -121,13 +163,28 @@ namespace AndroidThingsHelloWorld.Activities
 
         public void OnSensorChanged(SensorEvent e)
         {
-            lastTemperature = e.Values[0];
-            Toast.MakeText(this, $"Sensor Changed: {lastTemperature}", ToastLength.Long).Show();
-            tempValueTxtView.Text = lastTemperature.ToString("##.##");
-            if (displayMode == DisplayMode.TEMPERATURE)
-                UpdateDisplay(lastTemperature);
-
+            switch (e.Sensor.Type.ToString())
+            {
+                case Sensor.StringTypeAmbientTemperature:
+                    lastTemperature = e.Values[0];
+                    Toast.MakeText(this, $"Sensor Changed: {lastTemperature}", ToastLength.Long).Show();
+                    tempValueTxtView.Text = lastTemperature.ToString("##.##");
+                    if (displayMode == DisplayMode.TEMPERATURE)
+                        UpdateDisplay(lastTemperature);
+                    break;
+                case Sensor.StringTypePressure:
+                    lastPressure = e.Values[0];
+                    Toast.MakeText(this, $"Sensor Changed: {lastPressure}", ToastLength.Long).Show();
+                    pressureValueTxtView.Text = lastPressure.ToString("##.##");
+                    if (displayMode == DisplayMode.PRESSURE)
+                        UpdateDisplay(lastPressure);
+                    break;
+                default:
+                    break;
+            }
         }
+
+    
 
         private void UpdateDisplay(float value)
         {
