@@ -1,95 +1,147 @@
-﻿using Android.OS;
-using Java.Lang;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text;
 
-namespace AndroidThingsHelloWorld.Helpers
+using Android.App;
+using Android.Content;
+using Android.OS;
+using Android.Runtime;
+using Android.Things.Pio;
+using Android.Views;
+using Android.Widget;
+
+namespace WeatherStation
 {
     public static class BoardDefaults
     {
-        private static readonly string DEVICE_RPI3 = "rpi3";
-        private static readonly string DEVICE_IMX6UL_PICO = "imx6ul_pico";
-        private static readonly string DEVICE_IMX7D_PICO = "imx7d_pico";
+    private const string DEVICE_EDISON_ARDUINO = "edison_arduino";
+    private const string DEVICE_EDISON = "edison";
+    private const string DEVICE_RPI3 = "rpi3";
+    private const string DEVICE_NXP = "imx6ul";
+    private static string sBoardVariant = "";
+    private const  string DEVICE_IMX7D_PICO = "imx7d_pico";
 
-        public static string GetButtonGPIOPin()
+        public static string GetButtonGpioPin()
         {
-            if (Build.Device == DEVICE_RPI3)
-                return "BCM21";
-            if (Build.Device == DEVICE_IMX6UL_PICO)
+            switch (GetBoardVariant())
             {
-                return "GPIO2_IO03";
+                case DEVICE_EDISON_ARDUINO:
+                    return "IO12";
+                case DEVICE_EDISON:
+                    return "GP44";
+                case DEVICE_RPI3:
+                    return "BCM21";
+                case DEVICE_NXP:
+                    return "GPIO4_IO20";
+                case DEVICE_IMX7D_PICO:
+                    return "GPIO6_IO14";
+                default:
+                    throw new Exception("Unknown device: " + Build.Device);
             }
-
-            if (Build.Device == DEVICE_IMX7D_PICO)
-            {
-                return "GPIO6_IO14";
-            }
-
-            throw new IllegalArgumentException("Unknown device: " + Build.Device);
         }
 
-        public static string GetLEDGPIOPin()
+        public static string GetLedGpioPin()
         {
-            if (Build.Device == DEVICE_RPI3)
-                return "BCM6";
-            if (Build.Device == DEVICE_IMX6UL_PICO)
+            switch (GetBoardVariant())
             {
-                return "GPIO4_IO22";
+                case DEVICE_EDISON_ARDUINO:
+                    return "IO13";
+                case DEVICE_EDISON:
+                    return "GP45";
+                case DEVICE_RPI3:
+                    return "BCM6";
+                case DEVICE_NXP:
+                    return "GPIO4_IO21";
+                case DEVICE_IMX7D_PICO:
+                    return "GPIO2_IO02";
+                default:
+                    throw new Exception("Unknown device: " + Build.Device);
             }
-
-            if (Build.Device == DEVICE_IMX7D_PICO)
-            {
-                return "GPIO2_IO02";
-            }
-
-            throw new IllegalArgumentException("Unknown device: " + Build.Device);
         }
 
-        public static string GetI2CBus()
+        public static string GetI2cBus()
         {
-            if (Build.Device == DEVICE_RPI3)
-                return "I2C1";
-            if (Build.Device == DEVICE_IMX6UL_PICO)
+            switch (GetBoardVariant())
             {
-                return "I2C2";
+                case DEVICE_EDISON_ARDUINO:
+                    return "I2C6";
+                case DEVICE_EDISON:
+                    return "I2C1";
+                case DEVICE_RPI3:
+                    return "I2C1";
+                case DEVICE_NXP:
+                    return "I2C2";
+                case DEVICE_IMX7D_PICO:
+                    return "I2C1";
+                default:
+                    throw new Exception("Unknown device: " + Build.Device);
             }
-
-            if (Build.Device == DEVICE_IMX7D_PICO)
-            {
-                return "I2C1";
-            }
-
-            throw new IllegalArgumentException("Unknown device: " + Build.Device);
         }
 
-        public static string GetSPIBus()
+        public static string GetSpiBus()
         {
-            if (Build.Device == DEVICE_RPI3)
-                return "SPI0.0";
-            if (Build.Device == DEVICE_IMX6UL_PICO)
+            switch (GetBoardVariant())
             {
-                return "SPI3.0";
+                case DEVICE_EDISON_ARDUINO:
+                    return "SPI1";
+                case DEVICE_EDISON:
+                    return "SPI2";
+                case DEVICE_RPI3:
+                    return "SPI0.0";
+                case DEVICE_NXP:
+                    return "SPI3_0";
+                case DEVICE_IMX7D_PICO:
+                    return "SPI3.1";
+                default:
+                    throw new Exception("Unknown device: " + Build.Device);
             }
-
-            if (Build.Device == DEVICE_IMX7D_PICO)
-            {
-                return "SPI3.1";
-            }
-
-            throw new IllegalArgumentException("Unknown device: " + Build.Device);
         }
-        public static string GetSpeakerPWMPin()
+
+        public static string GetSpeakerPwmPin()
         {
-            if (Build.Device == DEVICE_RPI3)
-                return "PWM1";
-            if (Build.Device == DEVICE_IMX6UL_PICO)
+            switch (GetBoardVariant())
             {
-                return "PWM8";
+                case DEVICE_EDISON_ARDUINO:
+                    return "IO3";
+                case DEVICE_EDISON:
+                    return "GP13";
+                case DEVICE_RPI3:
+                    return "PWM1";
+                case DEVICE_NXP:
+                    return "PWM7";
+                case DEVICE_IMX7D_PICO:
+                    return "PWM2";
+                default:
+                    throw new Exception("Unknown device: " + Build.Device);
             }
-
-            if (Build.Device == DEVICE_IMX7D_PICO)
-            {
-                return "PWM2";
-            }
-            throw new IllegalArgumentException("Unknown device: " + Build.Device);
         }
+
+        private static string GetBoardVariant()
+        {
+            if (sBoardVariant != string.Empty)
+            {
+                return sBoardVariant;
+            }
+            sBoardVariant = Build.Device;
+            // For the edison check the pin prefix
+            // to always return Edison Breakout pin name when applicable.
+            if (sBoardVariant.Equals(DEVICE_EDISON))
+            {
+                PeripheralManager pioService = PeripheralManager.Instance;
+                List<string> gpioList = pioService.GpioList.ToList();
+                if (gpioList.Count != 0)
+                {
+                    String pin = gpioList[0];
+                    if (pin.StartsWith("IO"))
+                    {
+                        sBoardVariant = DEVICE_EDISON_ARDUINO;
+                    }
+                }
+            }
+            return sBoardVariant;
+        }
+
+
     }
 }

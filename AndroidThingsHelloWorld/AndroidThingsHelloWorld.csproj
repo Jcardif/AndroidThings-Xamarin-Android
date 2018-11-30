@@ -59,9 +59,8 @@
     <Compile Include="Activities\MainActivity.cs" />
     <Compile Include="Helpers\BoardDefaults.cs" />
     <Compile Include="Helpers\DynamicSensorCallback.cs" />
-    <Compile Include="Helpers\Handlers.cs" />
-    <Compile Include="Helpers\IHandler.cs" />
     <Compile Include="Helpers\ISensorCallback.cs" />
+    <Compile Include="Helpers\SensorEventListener.cs" />
     <Compile Include="Resources\Resource.Designer.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
   </ItemGroup>
@@ -110,6 +109,16 @@
       <Version>70.1501.0-preview2</Version>
     </PackageReference>
   </ItemGroup>
+  <ItemGroup>
+    <TransformFile Include="Resources\drawable\ic_cloudy.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <TransformFile Include="Resources\drawable\ic_rainy.xml" />
+  </ItemGroup>
+  <ItemGroup>
+    <TransformFile Include="Resources\drawable\ic_sunny.xml" />
+  </ItemGroup>
+  <ItemGroup />
   <Import Project="$(MSBuildExtensionsPath)\Xamarin\Android\Xamarin.Android.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it.
     Other similar extension points exist, see Microsoft.Common.targets.

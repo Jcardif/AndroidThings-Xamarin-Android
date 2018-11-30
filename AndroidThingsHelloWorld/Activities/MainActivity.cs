@@ -1,11 +1,13 @@
 ﻿using System;
 using Android.Animation;
 using Android.App;
+using Android.Content;
 using Android.Graphics;
 using Android.Hardware;
 using Android.OS;
-using Android.Support.V7.App;
+using Android.Runtime;
 using Android.Things.Pio;
+using Android.Util;
 using Android.Views;
 using Android.Views.Animations;
 using Android.Widget;
@@ -16,27 +18,25 @@ using Google.Android.Things.Contrib.Driver.Button;
 using Google.Android.Things.Contrib.Driver.Ht16k33;
 using Google.Android.Things.Contrib.Driver.Pwmspeaker;
 using Java.IO;
-using Java.Lang;
-using Button = Google.Android.Things.Contrib.Driver.Button.Button;
+using WeatherStation;
 using Console = System.Console;
-using Exception = System.Exception;
-using Math = Java.Lang.Math;
-using Toolbar = Android.Support.V7.Widget.Toolbar;
+using Keycode = Android.Views.Keycode;
 
 namespace AndroidThingsHelloWorld.Activities
 {
-    [Activity(Label = "@string/app_name", Theme = "@style/AppTheme", MainLauncher = true)]
-    public class MainActivity : AppCompatActivity, ISensorCallback, ISensorEventListener,
-        ValueAnimator.IAnimatorUpdateListener, Animator.IAnimatorListener, IRunnable, IHandler
+
+    public enum DisplayMode
     {
+        TEMPERATURE,
+        PRESSURE
+    }
 
-        private TextView _tempValueTxtView, _pressureValueTxtView;
-
-        private enum DisplayMode
-        {
-            TEMPERATURE,
-            PRESSURE
-        }
+    [Activity(Label = "WeatherStation")]
+    [IntentFilter(new[] { Intent.ActionMain }, Categories = new[] { Intent.CategoryLauncher })]
+    [IntentFilter(new[] { Intent.ActionMain }, Categories = new[] { "android.intent.category.IOT_LAUNCHER" })]
+    public class MainActivity : Activity, ISensorCallback, ValueAnimator.IAnimatorUpdateListener,ITemperatureEventListener,IPressureEventListener
+    {
+        private static readonly string TAG = typeof(MainActivity).FullName;
 
         private SensorManager _sensorManager;
         private ButtonInputDriver _buttonInputDriver;
@@ -45,7 +45,7 @@ namespace AndroidThingsHelloWorld.Activities
         private DisplayMode _displayMode = DisplayMode.TEMPERATURE;
 
         private Apa102 _ledStrip;
-        int[] rainbow = new int[7];
+        private readonly int[] _rainbow = new int[7];
         private static int LEDSTRIP_BRIGHTNESS = 1;
         private static float BAROMETER_RANGE_LOW = 965f;
         private static float BAROMETER_RANGE_HIGH = 1035f;
@@ -53,137 +53,131 @@ namespace AndroidThingsHelloWorld.Activities
         private static float BAROMETER_RANGE_RAINY = 990f;
 
         private IGpio _led;
-        private int SPEAKER_READY_DELAY_MS = 300;
-        private Speaker _speaker;
 
+        //private static  int SPEAKER_READY_DELAY_MS = 300;
+
+        private Speaker _speaker;
         private float _lastTemperature;
         private float _lastPressure;
 
-        private ValueAnimator _slide;
-        private DynamicSensorCallback _callback;
-        private readonly int MSG_UPDATE_BAROMETER_UI = 1;
+        private TextView _tempValueTxtiew, _pressureValueTxtView;
 
-        private Handlers _mHandler;
+        private SensorManager.DynamicSensorCallback _dynamicSensorCallback;
 
-        protected override void OnCreate(Bundle savedInstanceState)
+
+        protected override void OnCreate(Bundle bundle)
         {
-            base.OnCreate(savedInstanceState);
-            SetContentView(Resource.Layout.activity_main);
+            base.OnCreate(bundle);
+            Log.Debug(TAG, "Started Weather Station");
 
-            _mHandler=new Handlers(this);
-            _sensorManager = ((SensorManager) GetSystemService(SensorService));
-            // GPIO button that generates 'A' keypresses (handled by onKeyUp method)
+            _dynamicSensorCallback = new DynamicSensorCallback(this);
+
+            SetContentView (Resource.Layout.activity_main);
+            _tempValueTxtiew = FindViewById<TextView>(Resource.Id.tempValue);
+            _pressureValueTxtView = FindViewById<TextView>(Resource.Id.pressureValue);
+
+            _sensorManager = (SensorManager) GetSystemService(SensorService);
+
             try
             {
-                _buttonInputDriver = new ButtonInputDriver(BoardDefaults.GetButtonGPIOPin(),
-                    Button.LogicState.PressedWhenLow, Convert.ToInt32(Keycode.A));
+                _buttonInputDriver = new ButtonInputDriver(BoardDefaults.GetButtonGpioPin(),
+                    Google.Android.Things.Contrib.Driver.Button.Button.LogicState.PressedWhenLow,
+                    (int) KeyEvent.KeyCodeFromString("KEYCODE_A"));
                 _buttonInputDriver.Register();
-                Toast.MakeText(this, "Initialized GPIO Button that generates a keypress with KEYCODE_A",
-                    ToastLength.Long).Show();
+                Log.Debug(TAG, "Initialized GPIO Button that generates a keypress with KEYCODE_A");
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
-                throw new RuntimeException("Error initializing GPIO button");
+                throw new Exception("Error initializing GPIO button", e);
             }
-            // I2C
-            // Note: In this sample we only use one I2C bus, but multiple peripherals can be connected
-            // to it and we can access them all, as long as they each have a different address on the
-            // bus. Many peripherals can be configured to use a different address, often by connecting
-            // the pins a certain way; this may be necessary if the default address conflicts with
-            // another peripheral's. In our case, the temperature sensor and the display have
-            // different default addresses, so everything just works.
 
             try
             {
-                _environmentalSensorDriver = new Bmx280SensorDriver(BoardDefaults.GetI2CBus());
-                _callback = new DynamicSensorCallback(this);
-                _sensorManager.RegisterDynamicSensorCallback(_callback);
+                _environmentalSensorDriver = new Bmx280SensorDriver(BoardDefaults.GetI2cBus());
+                _sensorManager.RegisterDynamicSensorCallback(_dynamicSensorCallback);
                 _environmentalSensorDriver.RegisterTemperatureSensor();
                 _environmentalSensorDriver.RegisterPressureSensor();
-                Toast.MakeText(this, "Initialized I2C BMP280", ToastLength.Long).Show();
+                Log.Debug(TAG, "Initialized I2C BMP280");
             }
             catch (Exception e)
             {
-                Console.WriteLine(e);
-                throw new RuntimeException("Error initializing BMP280");
+                throw new Exception("Error initializing BMP280", e);
             }
 
             try
             {
-                _display = new AlphanumericDisplay(BoardDefaults.GetI2CBus());
+                _display = new AlphanumericDisplay(BoardDefaults.GetI2cBus());
                 _display.SetEnabled(true);
                 _display.Clear();
-                Toast.MakeText(this, "Initialized I2C Display", ToastLength.Long).Show();
-
+                Log.Debug(TAG, "Initialized I2C Display");
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                Toast.MakeText(this, "Error initializing displayy", ToastLength.Long).Show();
-                Toast.MakeText(this, "Display disabled", ToastLength.Long).Show();
+                Log.Error(TAG, "Error initializing display", e);
+                Log.Debug(TAG, "Display disabled");
                 _display = null;
             }
 
-            // SPI ledstrip
             try
             {
-                _ledStrip = new Apa102(BoardDefaults.GetSPIBus(), Apa102.Mode.Bgr)
+                _ledStrip = new Apa102(BoardDefaults.GetSpiBus(), Apa102.Mode.Bgr);
+                _ledStrip.Brightness=LEDSTRIP_BRIGHTNESS;
+                for (int i = 0; i < _rainbow.Length; i++)
                 {
-                    Brightness = LEDSTRIP_BRIGHTNESS
-                };
-                for (var i = 0; i < rainbow.Length; i++)
-                {
-                    float[] hsv = {i * 360f / rainbow.Length, 1.0f, 1.0f};
-                    rainbow[i] = Color.HSVToColor(255, hsv);
+                    float[] hsv = { i * 360f / _rainbow.Length, 1.0f, 1.0f };
+                    _rainbow[i] = Color.HSVToColor(255, hsv);
                 }
             }
-            catch (IOException)
+            catch (Exception e)
             {
-                _ledStrip = null; //LED strip is optional
+                Console.WriteLine(e);
+                _ledStrip = null;
             }
 
-            // GPIO led
             try
             {
-                PeripheralManager pioManager = PeripheralManager.Instance;
-                _led = pioManager.OpenGpio(BoardDefaults.GetLEDGPIOPin());
+                PeripheralManager pioService = PeripheralManager.Instance;
+                _led = pioService.OpenGpio(BoardDefaults.GetLedGpioPin());
                 _led.SetEdgeTriggerType(Gpio.EdgeNone);
                 _led.SetDirection(Gpio.DirectionOutInitiallyLow);
                 _led.SetActiveType(Gpio.ActiveHigh);
             }
-            catch (IOException)
+            catch (Exception e)
             {
-                Toast.MakeText(this, "Error initializing led", ToastLength.Short).Show();
+                Console.WriteLine(e);
             }
-
-
-            // PWM speaker
 
             try
             {
-                _speaker = new Speaker(BoardDefaults.GetSpeakerPWMPin());
-                _slide = ValueAnimator.OfFloat(440, 440 * 4);
-                _slide.SetDuration(50);
-                _slide.RepeatCount = 5;
-                _slide.SetInterpolator(new LinearInterpolator());
-                _slide.AddUpdateListener(this);
-                _slide.AddListener(this);
-
-                Handler handler = new Handler(MainLooper);
-                handler.PostDelayed(new Runnable(Run), SPEAKER_READY_DELAY_MS);
+                _speaker = new Speaker(BoardDefaults.GetSpeakerPwmPin());
+                ValueAnimator slide = ValueAnimator.OfFloat(440, 440* 4);
+                slide.SetDuration(50);
+                slide.RepeatCount = 5;
+                slide.SetInterpolator(new LinearInterpolator());
+                slide.AddUpdateListener(this);
             }
-            catch (Exception)
+            catch (Exception e)
             {
-                throw new RuntimeException("Error initializing speaker");
+                Console.WriteLine(e);
+                throw;
             }
+        }
 
-            var toolbar = FindViewById<Toolbar>(Resource.Id.home_toolbar);
-            SetSupportActionBar(toolbar);
-            SupportActionBar.Title = "Hello World";
-
-            _tempValueTxtView = FindViewById<TextView>(Resource.Id.tempValue);
-            _pressureValueTxtView = FindViewById<TextView>(Resource.Id.pressureValue);
-
+        public void UpdateDisplay(float value)
+        {
+            if (_display != null)
+            {
+                try
+                {
+                    _display.Display(value);
+                    _tempValueTxtiew.Text = _lastTemperature.ToString("##.##");
+                    _pressureValueTxtView.Text = _lastPressure.ToString("##.##");
+                }
+                catch (Exception e)
+                {
+                    Log.Error(TAG, "Error setting display", e);
+                }
+            }
         }
 
         public override bool OnKeyDown(Keycode keyCode, KeyEvent e)
@@ -192,12 +186,17 @@ namespace AndroidThingsHelloWorld.Activities
             {
                 _displayMode = DisplayMode.PRESSURE;
                 UpdateDisplay(_lastPressure);
-                _led.Value = true;
-
+                try
+                {
+                    _led.Value = true;
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine(exception);
+                }
                 return true;
             }
-
-            return base.OnKeyDown(keyCode, e);
+            return base.OnKeyUp(keyCode, e);
         }
 
         public override bool OnKeyUp(Keycode keyCode, KeyEvent e)
@@ -206,155 +205,26 @@ namespace AndroidThingsHelloWorld.Activities
             {
                 _displayMode = DisplayMode.TEMPERATURE;
                 UpdateDisplay(_lastTemperature);
-                _led.Value = false;
-
+                try
+                {
+                    _led.Value = false;
+                }
+                catch (Exception exception)
+                {
+                    Console.WriteLine(exception);
+                }
                 return true;
             }
 
             return base.OnKeyUp(keyCode, e);
         }
 
-        public void OnDynamicSensorConnected(Sensor sensor)
-        {
-            if (sensor.GetType().ToString() == Sensor.StringTypeAmbientTemperature)
-            {
-                _sensorManager.RegisterListener(this, sensor, SensorDelay.Normal);
-            }
-            else if (sensor.GetType().ToString() == Sensor.StringTypePressure)
-            {
-                _sensorManager.RegisterListener(this, sensor, SensorDelay.Normal);
-            }
-        }
-
-        public void OnDynamicSensorDisconnected(Sensor sensor)
-        {
-
-        }
-
-        public void OnAccuracyChanged(Sensor sensor, SensorStatus accuracy)
-        {
-            Toast.MakeText(this, $"Accuracy Changed: {accuracy}", ToastLength.Long).Show();
-        }
-
-        public void OnSensorChanged(SensorEvent e)
-        {
-            switch (e.Sensor.Type.ToString())
-            {
-                case Sensor.StringTypeAmbientTemperature:
-                    _lastTemperature = e.Values[0];
-                    Toast.MakeText(this, $"Sensor Changed: {_lastTemperature}", ToastLength.Long).Show();
-                    _tempValueTxtView.Text = _lastTemperature.ToString("##.##");
-                    if (_displayMode == DisplayMode.TEMPERATURE)
-                        UpdateDisplay(_lastTemperature);
-                    break;
-                case Sensor.StringTypePressure:
-                    _lastPressure = e.Values[0];
-                    Toast.MakeText(this, $"Sensor Changed: {_lastPressure}", ToastLength.Long).Show();
-                    _pressureValueTxtView.Text = _lastPressure.ToString("##.##");
-                    if (_displayMode == DisplayMode.PRESSURE)
-                        UpdateBarometer(_lastPressure);
-                    break;
-            }
-        }
-
-        private void UpdateBarometer(float pressure)
-        {
-            // Update UI.
-            if (!_mHandler.HasMessages(MSG_UPDATE_BAROMETER_UI))
-            {
-                _mHandler.SendEmptyMessageDelayed(MSG_UPDATE_BAROMETER_UI, 100);
-            }
-
-            // Update led strip.
-            if (_ledStrip == null)
-            {
-                return;
-            }
-
-            float t = (pressure - BAROMETER_RANGE_LOW) / (BAROMETER_RANGE_HIGH - BAROMETER_RANGE_LOW);
-            int n = (int)Math.Ceil(rainbow.Length * t);
-            n = Math.Max(0, Math.Min(n, rainbow.Length));
-            int[] colors = new int[rainbow.Length];
-            for (int i = 0; i < n; i++)
-            {
-                int ri = rainbow.Length - 1 - i;
-                colors[ri] = rainbow[ri];
-            }
-
-            try
-            {
-                _ledStrip.Write(colors);
-            }
-            catch (IOException e)
-            {
-                e.PrintStackTrace();
-            }
-        }
-
-
-        private void UpdateDisplay(float value)
-        {
-            if (_display == null) return;
-            try
-            {
-                _display.Display(value);
-            }
-            catch (Exception)
-            {
-                Toast.MakeText(this, $"Error setting display", ToastLength.Long).Show();
-            }
-        }
-
-        public void OnAnimationUpdate(ValueAnimator animation)
-        {
-            try
-            {
-                var v = (float) animation.AnimatedValue;
-                _speaker.Play(v);
-            }
-            catch (IOException e)
-            {
-                throw new RuntimeException("Error sliding speaker", e);
-            }
-        }
-
-        public void OnAnimationCancel(Animator animation)
-        {
-
-        }
-
-        public void OnAnimationEnd(Animator animation)
-        {
-            try
-            {
-                _speaker.Stop();
-            }
-            catch (IOException e)
-            {
-                throw new RuntimeException("Error sliding speaker", e);
-            }
-        }
-
-        public void OnAnimationRepeat(Animator animation)
-        {
-
-        }
-
-        public void OnAnimationStart(Animator animation)
-        {
-        }
-
-        public void Run()
-        {
-            _slide.Start();
-        }
-
         protected override void OnDestroy()
         {
             base.OnDestroy();
             // Clean up sensor registrations
-            _sensorManager.UnregisterListener(this);
-            _sensorManager.UnregisterListener(this);
+            _sensorManager.UnregisterListener(new TemperatureListener(this));
+            _sensorManager.UnregisterListener(new PressureListener(this));
 
             // Clean up peripheral.
             if (_environmentalSensorDriver != null)
@@ -437,21 +307,121 @@ namespace AndroidThingsHelloWorld.Activities
                     _led = null;
                 }
             }
+
+            //TODO https://github.com/androidthings/weatherstation/blob/master/app/src/main/java/com/example/androidthings/weatherstation/WeatherStationActivity.java#L304
         }
 
-        public void HandleMessage(Message msg)
+        private void UpdateBarometer(float pressure)
         {
-            if (msg.What == MSG_UPDATE_BAROMETER_UI)
+            if (pressure > BAROMETER_RANGE_SUNNY)
             {
-                if (_lastPressure > BAROMETER_RANGE_SUNNY)
-                {
-
-                }
-                else if (_lastPressure < BAROMETER_RANGE_RAINY)
-                {
-
-                }
+                //imageView.SetImageResource(Resource.Mipmap.ic_sunny);
             }
+            else if (pressure < BAROMETER_RANGE_RAINY)
+            {
+               //imageView.SetImageResource(Resource.Drawable.ic_rainy);
+            }
+            else
+            {
+                //imageView.SetImageResource(Resource.Drawable.ic_cloudy);
+            }
+
+            if (_ledStrip == null)
+            {
+                return;
+            }
+
+            float t = (pressure - BAROMETER_RANGE_LOW) / (BAROMETER_RANGE_HIGH - BAROMETER_RANGE_LOW);
+            int n = (int)Math.Ceiling(_rainbow.Length * t);
+            n = Math.Max(0, Math.Min(n, _rainbow.Length));
+            int[] colors = new int[_rainbow.Length];
+            for (int i = 0; i < n; i++)
+            {
+                int ri = _rainbow.Length - 1 - i;
+                colors[ri] = _rainbow[ri];
+            }
+
+            try
+            {
+                _ledStrip.Write(colors);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e);
+            }
+        }
+
+        public void OnDynamicSensorConnected(Sensor sensor)
+        {
+            if (sensor.Type == SensorType.AmbientTemperature)
+            {
+                _sensorManager.RegisterListener(new TemperatureListener(this), sensor, SensorDelay.Normal);
+                //if (mPubsubPublisher != null)
+                //{
+                //    mSensorManager.registerListener(mPubsubPublisher.getTemperatureListener(), sensor,
+                //            SensorManager.SENSOR_DELAY_NORMAL);
+                //}
+            }
+            else if (sensor.Type == SensorType.Pressure)
+            {
+                _sensorManager.RegisterListener(new PressureListener(this), sensor, SensorDelay.Normal);
+                //if (mPubsubPublisher != null)
+                //{
+                //    mSensorManager.registerListener(mPubsubPublisher.getTemperatureListener(), sensor,
+                //            SensorManager.SENSOR_DELAY_NORMAL);
+                //}
+            }
+        }
+
+        public void OnDynamicSensorDisconnected(Sensor sensor)
+        {
+
+        }
+
+        public void OnAnimationUpdate(ValueAnimator animation)
+        {
+            try
+            {
+                float v = (float)animation.AnimatedValue;
+                _speaker.Play(v);
+            }
+            catch (Exception e)
+            {
+                throw new Exception("Error sliding speaker", e);
+            }
+        }
+
+        public void OnTemperatureAccuracyChanged(Sensor sensor, [GeneratedEnum] SensorStatus accuracy)
+        {
+            Log.Debug(TAG, "accuracy changed: " + accuracy);
+        }
+
+        public void OnTemperatureSensorChanged(SensorEvent e)
+        {
+            _lastTemperature = e.Values[0];
+            Log.Debug(TAG, "sensor changed: " + _lastTemperature);
+
+            if (_displayMode == DisplayMode.TEMPERATURE)
+            {
+                UpdateDisplay(_lastTemperature);
+            }
+        }
+
+        public void OnPressureAccuracyChanged(Sensor sensor, [GeneratedEnum] SensorStatus accuracy)
+        {
+            Log.Debug(TAG, "accuracy changed: " + accuracy);
+        }
+
+        public void OnPressureSensorChanged(SensorEvent e)
+        {
+            _lastPressure = e.Values[0];
+            Log.Debug(TAG, "sensor changed: " + _lastPressure);
+
+            if (_displayMode == DisplayMode.PRESSURE)
+            {
+                UpdateDisplay(_lastPressure);
+            }
+            UpdateBarometer(_lastPressure);
         }
     }
 }
