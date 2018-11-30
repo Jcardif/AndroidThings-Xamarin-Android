@@ -18,9 +18,11 @@ using Google.Android.Things.Contrib.Driver.Button;
 using Google.Android.Things.Contrib.Driver.Ht16k33;
 using Google.Android.Things.Contrib.Driver.Pwmspeaker;
 using Java.IO;
+using Plugin.Connectivity;
 using WeatherStation;
 using Console = System.Console;
 using Keycode = Android.Views.Keycode;
+using static AndroidThingsHelloWorld.Helpers.IoTHubOps;
 
 namespace AndroidThingsHelloWorld.Activities
 {
@@ -31,7 +33,7 @@ namespace AndroidThingsHelloWorld.Activities
         PRESSURE
     }
 
-    [Activity(Label = "WeatherStation")]
+    [Activity(Label = "@string/app_name")]
     [IntentFilter(new[] { Intent.ActionMain }, Categories = new[] { Intent.CategoryLauncher })]
     [IntentFilter(new[] { Intent.ActionMain }, Categories = new[] { "android.intent.category.IOT_LAUNCHER" })]
     public class MainActivity : Activity, ISensorCallback, ValueAnimator.IAnimatorUpdateListener,ITemperatureEventListener,IPressureEventListener
@@ -68,15 +70,14 @@ namespace AndroidThingsHelloWorld.Activities
         protected override void OnCreate(Bundle bundle)
         {
             base.OnCreate(bundle);
-            Log.Debug(TAG, "Started Weather Station");
-
-            _dynamicSensorCallback = new DynamicSensorCallback(this);
 
             SetContentView (Resource.Layout.activity_main);
             _tempValueTxtiew = FindViewById<TextView>(Resource.Id.tempValue);
             _pressureValueTxtView = FindViewById<TextView>(Resource.Id.pressureValue);
 
             _sensorManager = (SensorManager) GetSystemService(SensorService);
+
+            _dynamicSensorCallback = new DynamicSensorCallback(this);
 
             try
             {
@@ -163,7 +164,7 @@ namespace AndroidThingsHelloWorld.Activities
             }
         }
 
-        public void UpdateDisplay(float value)
+        private async void UpdateDisplay(float value)
         {
             if (_display != null)
             {
@@ -172,6 +173,10 @@ namespace AndroidThingsHelloWorld.Activities
                     _display.Display(value);
                     _tempValueTxtiew.Text = _lastTemperature.ToString("##.##");
                     _pressureValueTxtView.Text = _lastPressure.ToString("##.##");
+                    if(!CrossConnectivity.Current.IsConnected) return;
+                    Initialise();
+                    await SendDeviceToCloudMessagesAsync(_lastTemperature,_lastPressure);
+
                 }
                 catch (Exception e)
                 {

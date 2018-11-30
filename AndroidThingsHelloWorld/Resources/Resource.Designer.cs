@@ -26,6 +26,7 @@ namespace AndroidThingsHelloWorld
 		
 		public static void UpdateIdValues()
 		{
+			global::Microsoft.Azure.Amqp.Resource.String.ApplicationName = global::AndroidThingsHelloWorld.Resource.String.ApplicationName;
 		}
 		
 		public partial class Animation
@@ -3163,6 +3164,9 @@ namespace AndroidThingsHelloWorld
 		public partial class String
 		{
 			
+			// aapt resource value: 0x7f080028
+			public const int ApplicationName = 2131230760;
+			
 			// aapt resource value: 0x7f080001
 			public const int abc_action_bar_home_description = 2131230721;
 			
@@ -3250,11 +3254,11 @@ namespace AndroidThingsHelloWorld
 			// aapt resource value: 0x7f080011
 			public const int abc_toolbar_collapse_description = 2131230737;
 			
-			// aapt resource value: 0x7f080029
-			public const int action_settings = 2131230761;
+			// aapt resource value: 0x7f08002a
+			public const int action_settings = 2131230762;
 			
-			// aapt resource value: 0x7f080028
-			public const int app_name = 2131230760;
+			// aapt resource value: 0x7f080029
+			public const int app_name = 2131230761;
 			
 			// aapt resource value: 0x7f08001f
 			public const int appbar_scrolling_view_behavior = 2131230751;
